@@ -1,0 +1,299 @@
+
+# "Corsework2"
+## "ufcnrtr"
+
+
+### Libraries
+First we are going to upload the libraries
+
+```
+library(tmap)
+library(geojsonio)
+library(sf)
+library(raster)
+library(tidyverse)
+library(spData)
+library(spatstat)
+library(sp)
+library(raster)
+```
+
+```{r include=FALSE}
+library(tmap)
+library(geojsonio)
+library(sf)
+library(raster)
+library(tidyverse)
+library(spData)
+library(spatstat)
+library(sp)
+library(raster)
+```
+
+
+
+### Then we are going to read the data from Adam's Dropbox for the route.
+```{r}
+hunt <- geojson_read("https://www.dropbox.com/s/wa2ip35tcmt93g3/Team7.geojson?raw=1", what = "sp")
+```
+
+
+### Let's have a look at the data.
+
+```{r}
+tmap_mode("view")
+tm_shape(hunt) +
+  tm_lines (col = "green", lwd = 4)
+```
+
+### sooooo we converted sp to sf .....we measure the distance and we change the coordinate system
+st_as_sf ------st means is the generic of simple features, therefore we are transforming from sp to sf
+
+```{r}
+hunt1 <- st_as_sf(hunt)
+st_crs(hunt1)
+```
+ we should take a look at the projection
+ we also can ask to the head of our data
+ simple features dont work well with rasters
+
+```{r}
+head(hunt1)
+```
+### Let's measure the distance
+
+```{r}
+st_length(hunt1)
+```
+### Let's change to the national british grid
+
+```{r}
+hunt2 <- st_transform(hunt1, 27700)
+st_crs
+```
+
+```
+library(rgdal)
+```
+```{r include=FALSE}
+library(rgdal)
+```
+
+### Read tube statations file as simple features
+
+```{r}
+tubestations <- st_read("https://www.doogal.co.uk/LondonStationsKML.ashx","London stations with zone information")
+```
+### Change to National British grid and plot, we can confirm ploting the head of the data.
+### Let's plot the stations.
+
+```{r}
+stations1<-  st_transform(tubestations, 27700) 
+head(stations1)
+tm_shape(stations1) +
+  tm_dots(col="blue")
+```
+###  Next thing is the 100m distance buffer for the route. 
+
+```{r}
+hunt3 <- st_buffer(hunt2, dist = 100)
+class(hunt2)
+tm_shape(hunt3) +
+  tm_polygons(col = "red")
+```
+### super buffer is done
+### now we should plot the tube stations 
+
+```
+library(tidyverse)
+```
+
+```{r include=FALSE}
+library(tidyverse)
+```
+### Read the hunt addresses from a csv file and check the head of the data
+
+```{r}
+huntaddresses <-  read.csv("https://www.dropbox.com/s/2cbu2ux9ddy9c0l/huntaddresses.csv?raw=1")
+head(huntaddresses)
+```
+
+### I was almost on the finish line
+Harry Potter's platform is giving a headache. the platform 9 3/4 has an address from the US let's change it. 
+
+### This is gonna work
+```{r}
+huntaddresses[29,3] <- 51.531427
+huntaddresses[29,4] <- -0.1261330
+```
+
+### Here we transform the format of the hunt addresses to simple features.
+
+```{r}
+huntaddresses1 <-  st_as_sf(huntaddresses, coords = c("lon","lat"))
+head
+```
+ 
+### Transform into a national BNG
+```{r}
+st_crs(huntaddresses1)
+huntadresses2 <- st_set_crs(huntaddresses1, 4326)
+```
+### It doesnt have a projection we can use this function   st_set_crs let's have a look it has a WGS84 let's change to NBG, plot the head of the data, and plot the points.
+
+```{r}
+st_crs(huntadresses2)
+huntaddresses3 <- st_transform(huntadresses2, 27700)
+head(huntaddresses3)
+tm_shape(huntaddresses3) +
+  tm_dots(col = "green")
+```
+
+### Here comes the good the intersections.
+
+###  So I have the hunt3 which is the buffer and huntaddresses3 which is the tube stations
+### Let's do the intersection 1 for question 2
+
+```{r}
+findtubestations = st_intersection(hunt3,stations1)
+```
+###  Let's plot the intersection
+```{r}
+
+tm_shape(hunt3)+
+  tm_polygons(col='green')+
+  tm_shape(findtubestations)+
+  tm_dots(col="blue")
+```
+###  This buffer is for question number 3
+
+```{r}
+hunt4 <- st_buffer(hunt2, dist = 300)
+tm_shape(hunt4) +
+  tm_polygons(col = "red")
+```
+###  new intersection this intersection is for the question number 3 
+```{r}
+findhunts = st_intersection(hunt4, huntaddresses3)
+tm_shape(hunt4)+
+  tm_polygons(col = "blue")+
+  tm_shape(findhunts)+
+  tm_dots(col="red")
+```
+###  clip the data to a single object
+###  Let's go to the new question number 4 now we load the london wards shapefile.
+
+```
+library(rgdal)
+```
+
+```{r include=FALSE}
+library(rgdal)
+```
+
+### Read the shape file with OGR, transform to simple features and change to the NBG.
+```{r}
+LondonWards <- readOGR("London Wards/LondonWards.shp")
+LondonWards1 <- st_as_sf(LondonWards)
+LondonWards2<-st_transform(LondonWards1,27700)
+```
+
+### Calculate the intersection between wards
+
+```{r}
+londonWardsIntersect<- LondonWards2[hunt2,]
+qtm(LondonWards2)
+qtm(londonWardsIntersect)
+
+```
+
+
+
+### To be more clear plot the route and the wards
+```{r}
+tm_shape (londonWardsIntersect)+
+  tm_polygons(col = NA, alpha = 0.9)+
+  tm_shape(hunt) +
+  tm_lines (col = "green", lwd = 4)
+``` 
+
+### This is for question 4
+### Let's do some filtering ------filter the data and get the values filter male and female expectancy
+```{r}
+londonWardsIntersect$MaleLE0509
+londonWardsIntersect$FemaleLE05
+```
+### Get the maximun value
+```{r}
+londonwardsmax<-filter(londonWardsIntersect,MaleLE0509==max(londonWardsIntersect$MaleLE0509))
+```
+### Get the minimun value
+```{r}
+londonwardsmin<-filter(londonWardsIntersect,MaleLE0509==min(londonWardsIntersect$MaleLE0509))
+print (londonwardsmax)
+print (londonwardsmin)
+```
+### This is for question number 5
+### get the mean of Life expentancy male
+```{r}
+londonwardsaveragemale<-group_by(londonWardsIntersect)%>%
+                    summarise(mean_life = mean (MaleLE0509, na.rm = TRUE))     
+print(londonwardsaveragemale)
+londonwardsaveragefemale<-group_by(londonWardsIntersect)%>%
+                    summarise(mean_life = mean (FemaleLE05, na.rm = TRUE))     
+print(londonwardsaveragefemale)
+```
+
+### For question five let's run a K test
+### Let's Transform to a Spatial Polygons
+
+
+```{r}
+superhunt <- huntaddresses3
+
+```
+
+### First we change the points from sf to sp, now we do the opposite.
+```{r}
+score <- sf:::as_Spatial(superhunt)
+```
+
+### Plot the the window for the K test
+```{r}
+window <- as.owin(LondonWards)
+plot(window)
+```
+
+### Now we should create a ppp object
+
+```{r}
+huntpoints <- score
+huntpoints.ppp <- ppp(x=huntpoints@coords[,1],y=huntpoints@coords[,2],window=window)
+plot (huntpoints.ppp,pch=16,cex=1,main="huntpoints")
+```
+
+### Finally we run our K test
+#K test
+```{r}
+K <- Kest(huntpoints.ppp, correction="border")
+plot(K)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

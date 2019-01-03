@@ -1,0 +1,344 @@
+# "Mini Project"
+## "ufcnrtr"
+## Was there a relationship between residents with very good health and residents that ride a bicycle as a method of travel to work in the Local Authorities (Districts) in England and Wales in 2011? 
+
+## first we are going to call the libraries
+
+```
+library(broom)
+library(tmap)
+library(geojsonio)
+library(sf)
+library(raster)
+library(tidyverse)
+library(spData)
+library(spatstat)
+library(rgdal)
+library(sp)
+library(raster)
+library(ggplot2)
+library(gridExtra)
+```
+``` {r include=FALSE}
+library(broom)
+library(tmap)
+library(geojsonio)
+library(sf)
+library(raster)
+library(tidyverse)
+library(spData)
+library(spatstat)
+library(rgdal)
+library(sp)
+library(raster)
+library(ggplot2)
+library(gridExtra)
+```
+
+## Introduction
+
+Public health researchers have studied active transportation use (mainly walking and cycling) and its correlation.  (Cabral, Kim & Parkins, 2018). An increase in physical behavior can lead to have better population health and prevent the development of other illness. (Bourne et al.,2018) 
+There are some studies that show that e-cycling have the potential to help to improve health for people with Type 2 diabetes, moreover, other studies compared the benefits of walking and cycling suggesting that cycling may provide greater health benefits due to higher intensity which could bring better health (Cooper et al., 2018). Cycling can contribute to reduce transportation greenhouse gas emissions and pollution, in addition, it offers a remedy for physical inactivity related to health problems.  (Cabral, Kim & Parkins, 2018).
+Several international organizations have requested to the governments the implementation of new public policies to promote the use of active transport such as walking or cycling, with and improvement to the public transport to reduce motor vehicles use in urban areas, reducing greenhouse emissions and encouraging physical activity and traffic safety (Nieuwenhuijsen & Rojas-Rueda.,2018). Health benefits from physical activities can reduce health risks from traffic incidents and air pollution inhalation. (Nieuwenhuijsen & Rojas-Rueda.,2018).
+The improvements of life derive from the use of bikes as a mean of daily transportation (Nieuwenhuijsen & Rojas-Rueda.,2018). This paper examines a proposed relationship between residents with very good health and cycling as a mode of transportation In the Local Authorities Districts in England and Wales in 2011. The objective is to find if there was a correlation between residents with very good health and journeys made by bicycle to work as a method of transport to work.
+## Data
+The census topics of “Very good health” and “Method of Travel to work” (bicycle) were obtained from the 2011 Census performed by the Office for National Statistics in the U.K., these “Quick Statistics” are the most detailed information available from the Census. Information on health classification measures the state of general health in 5 domains, from very good health to very bad health, additionally for “Method of travel to work” (bicycle) provides a measure of journeys made by the population on different methods encompassing national and local transport services policies for Local Authority(Districts) of England and Wales. The shapefile for the Local Authority (Districts), was obtained from the Office for National Statistics. 
+## Method
+Following the review of the dataset for the study, a Chi-Test will be performed between the variables residents with “very good health” and “Method of travel to work” (bicycle) to test the statistically significance of our model. Then a linear regression will be performed to test the strength of the relationship between the variables, then a plot of the residuals will be performed to check if there are any spatial patterns followed by a Moran test to check the spatial autocorrelation.  
+For the second part of this research, more variables will be added to our model hoping to find a more complete explanation.
+
+
+### The first step is to load the file and transform this shape file into simple features, and plot the head of the dataset
+
+```{r}
+LA <- readOGR("localA/local2.shp")
+head(LA)
+LA1 <- st_as_sf(LA)
+```
+
+
+
+### Next Step is call the data from our remember should be a data frame
+
+```{r}
+library(readxl)
+superdata <- read_excel("LOAtransportandhealth4.xlsx")
+head(superdata)
+```
+
+### Check if the data is a data frame 
+```{r}
+class(superdata)
+```
+
+### Now let's merge the data.
+```{r}
+LA2 <- merge (LA1,superdata, by.x ="lad16cd", by.y ="LAcode" )
+qtm(LA2)
+```
+###  Check it
+```{r}
+head(LA2)
+```
+### I need more proofs, let's get the summary from our intented variables
+
+```{r}
+summary (LA2$bicycle)
+summary (LA2$very_good_health)
+```
+
+### That's great now we need to use this special Adam's function to recode our values for the famous Chi square test.
+```{r}
+newvar<-0
+recode<-function(variable,high,medium,low){
+  newvar[variable<=high]<-"High"
+  newvar[variable<=medium]<-"Medium"
+  newvar[variable<=low]<-"Low"
+  return(newvar)
+}
+```
+
+### Let's do our chi square test, first we are going to change the values of each variable to create the matrix.
+### Then we are going to get our values to check the significance of the variables
+```
+attach(LA2)
+LA2$bicycle_recode <- recode(bicycle, 17755,2529.5,817.2)
+
+LA2$General_Health_recode <- recode(very_good_health,258250,94489,43712)
+
+```
+```
+chisq <- chisq.test(LA2$bicycle_recode, LA2$very_good_health_recode) 
+
+ 
+> chisq$observed
+                  LA2$General_Health_recode
+LA2$bicycle_recode High Low Medium
+            High     85   0      2
+            Low      30   4     53
+            Medium  145   0     29
+> chisq$expected
+                  LA2$General_Health_recode
+LA2$bicycle_recode High Low Medium
+            High     65   1     21
+            Low      65   1     21
+            Medium  130   2     42
+> chisq$statistic
+X-squared 
+  108.707 
+> chisq$p.value
+[1] 1.373183e-22
+```
+## Chi-squared test and Hypothesis 
+A chi square test was performed to find the significance between residents with” very good health”  and “Method of travel to work” (bicycle), therefore, a significant interaction was found (X-squared = 108.707, p < 1.373183 e-22).  According to this results the null hypothesis is rejected. The chi-squared results show there is a statistical relationship between them. 
+
+## Linear Regression 
+### Visualization fo the Data
+.
+
+```{r}
+varlist <- data.frame(cbind(lapply(LA2, class)))
+varlist$id <- seq(1,nrow(varlist))
+
+qplot(bicycle, data = LA2, geom = "histogram")
+
+qplot(very_good_health, data = LA2, gemo = "histogram")
+```
+
+### Frequency distribution come in many shapes and size, for this case the variables show that the data deviate from the normal distribution their appearance is positively skewed, therefore, a process of normalization with natural logarithm will be conducted to change the frequency of the data.
+
+```{r}
+pb <- qplot (x=bicycle, data = LA2)
+pb1 <- qplot(x=bicycle_log, data=LA2)
+```
+
+```{r}
+grid.arrange(pb,pb1, ncol = 1)
+```
+```{r}
+h1 <- qplot(x=very_good_health, data=LA2)
+h2 <- qplot(x=very_good_health_log, data=LA2)
+```
+
+```{r}
+grid.arrange(h1,h2, ncol=1)
+```
+### Plot the Multiple Linear Regression
+
+
+```{r}
+qplot(very_good_health_log,bicycle_log, data=LA2, geom="point")+stat_smooth(method="lm",se=FALSE,size=1)
+```
+
+### Plot the results
+
+
+```
+library(broom)
+```
+```{r include=FALSE}
+library(broom)
+```
+
+```{r}
+LAmodel <- lm(very_good_health_log ~ bicycle_log, data = LA2 )
+
+LAmodel_res <- tidy(LAmodel)
+
+summary(LAmodel)
+
+plot(LAmodel)
+```
+## Interpreting the Results (Multiple Linear Regression) 
+
+According to the coefficients, all of them are positive, therefore, for each journey to work does not matter the way of transportation, residents with very good health will increase in a minimum way. The p-value is <0.001 and positive which means that our model is statistically significant. The fit of the model represents by the R-squared has improved from the linear regression from 45% to 82%.  According to the T value the most important variables is “Travelling to work by car or van” which was unexpected.
+
+```{r}
+LA2$LAmodel_resids <- LAmodel$residuals
+```
+
+```{r}
+tmap_mode("view")
+qtm(LA2,fill="LAmodel_resids")
+```
+##  Interpreting the Results (Residuals)
+Assumptions about the residuals always is worth plotting the standardized residuals due spotting errors and homoscedasticity, the first plot shows a random array of dots evenly dispersed around, therefore we can discard heteroscedasticity, moreover, a map will be plotted with the residuals to find any spatial patterns
+
+
+```
+library(spdep)
+```
+
+```{r include=FALSE}
+library(spdep)
+```
+## Plot the centroids
+```{r}
+
+LA3 <- as(LA2,"Spatial")
+coordsW <- coordinates(LA3)
+plot(coordsW)
+```
+## Plot the spatial weight matrix
+
+```{r}
+LA4_nb <- poly2nb(LA3,queen=T)
+
+plot(LA4_nb,coordinates(coordsW), col="blue")
+
+plot(LA3,add=T)
+```
+## Moran I Test
+
+At first glance it appears that the area near London shows a strong positive autocorrelation, however, it looks like this due to the closeness of the Local Authorities among each other, a Moran I test will be performed to check the spatial autocorrelation.
+
+```{r}
+LA5.lw <- nb2listw(LA4_nb, zero.policy=T)
+
+moran.test(LA3@data$LAmodel_resids, LA5.lw, zero.policy = T)
+
+moran.plot(LA3@data$LAmodel_resids, LA5.lw, zero.policy = T)
+```
+## Interpreting the Results (Moran I test)
+The table (2) shows a positive autocorrelation and statistically significant (I= .4579), this means a tendency to a spatial concentration of Local Authorities with more bicycle journeys, therefore, the Local Authorities with evidence of high values tend to be near to other areas with high values, and areas with low values tend to cluster.
+
+## Exploring more variables.
+The methodology has shown a statistical correlation between residents with “very good health” and residents travelling to work by “bicycle”, this could be due to the intensive physical activity required for commuting.
+The purpose of the next stage of this paper is to explore the multidimension with more variables such as “Method to travel to work “by car or van and on foot. The “car or van” variable does not involve physical activity, for the variable “on foot” which involves physical activity could give us another perspective.
+
+##  Pearson correlation matrix.
+Two more variables that are not correlated with the independent variable residents with “very good health” will be added to perform the Pearson correlation matrix.
+
+### Visualize the new data
+
+```
+library(corrplot)
+```
+
+```{r include=FALSE}
+library(corrplot)
+```
+```{r}
+corvan <- qplot (x=car_or_van, data = LA2)
+corvan1 <- qplot(x=car_or_van_log, data=LA2)
+
+grid.arrange(corvan,corvan1, ncol=1)
+```
+
+```{r}
+of <- qplot (x=on_foot, data = LA2)
+of1 <- qplot(x=on_foot_log, data=LA2)
+
+grid.arrange(of,of1, ncol=1)
+```
+
+```{r}
+LA2df <- st_set_geometry(LA2,NULL)
+LA2df$bicycle_log <- as.numeric(LA2df$bicycle_log) 
+cor.data <- with(LA2df, data.frame(very_good_health_log,bicycle_log,car_or_van_log,on_foot_log)) 
+
+```
+
+#df$colname <- as.numeric(ds$colname)
+
+```{r}
+cor(cor.data)
+plot(cor.data)
+
+
+cor.mat <- cor(cor.data, use="complete")
+
+
+corrplot.mixed(cor.mat)
+```
+### Interpreting the Results (Pearson Correlation Matrix) 
+The Pearson correlation matrix shows a strong correlation among residents with “very good health” and the methods of transportto work.  Among the variables the lowest value of correlation is for the “Method of transport to work” (bicycle) with (.68), the following value for the correlation was “Method of transport to work” (car or van)with (.73) and the strongest correlation is for “Method of transport to work” (on foot )as a method of transportation to work with (0.86).
+The lowest correlation is for journeys in bicycle (.68), this value was unexpected due to physical exercise involved in riding a bicycle, even though, it has a strong correlation with “very good health”.
+Travelling by car or van (.73) had a higher value than traveling2 by bicycle. This value was unexpected since it does not involve physical exercise. 
+The highest value was for travelling on foot to work (0.86). This value was expected to be higher due to the physical move.
+
+
+```{r}
+LAmodel2 <- lm(very_good_health_log ~ bicycle_log + car_or_van_log + on_foot_log, data = LA2 )
+
+summary(LAmodel2)
+
+LA2$LAmodel2_res <- LAmodel2$residuals
+
+plot(LAmodel2)
+
+```
+## Interpreting the Results (Multiple Linear Regression) 
+According to the coefficients, all of them are positive, therefore, for each journey to work does not matter the way of transportation, residents with very good health will increase in a minimum way. The p-value is <0.001 and positive which means that our model is statistically significant. The fit of the model represents by the R-squared has improved from the linear regression from 45% to 82%.  According to the T value the most important variables is “Travelling to work by car or van” which was unexpected.
+
+
+```{r}
+qtm(LA2, fill = "LAmodel2_res")
+```
+
+## Interpreting the Results (Residuals Multiple Linear Regression)
+This plot shows a random array of dots evenly dispersed around, therefore we can discard heteroscedasticity, to extend the research a map will be plotted with the residuals to find any spatial patterns. 
+The Map shows that there are some spatial patterns, in the area near London, to prove this assumption a Moran’s I statistic test will be performed to confirm this in a statistically way. 
+
+
+
+```{r}
+LA77 <- as(LA2,"Spatial")
+
+
+
+LA5.lw <- nb2listw(LA4_nb, zero.policy=T)
+
+moran.test(LA77@data$LAmodel2_res, LA5.lw, zero.policy = T)
+moran.plot(LA77@data$LAmodel2_res, LA5.lw, zero.policy = T)
+```
+## Moran I test
+
+The table shows a positive autocorrelation and statistically significant (I= .6879), this means a tendency to a spatial concentration of Local Authorities (Districts) in the area near London. The Local Authorities near London show high values. The assumption could be that residents with very good health travel to work every day, therefore, going to work made them healthier in 2011.
+
+## Conclusions
+The purpose of this research was to explore the variables of residents with “very good health” and journeys by bicycle as a “Method of transport to work” in the Local Authorities (Districts) of England and Wales in 2011. The results for the first part were expected, residents health” had a strong correlation with “Method of transport to work” (bicycle), the assumption is that physical activity improve residents health. For the second part, more variables were explored such as “Method of transport to work” by car or van and on foot. The results showed that the most correlated variable with very good health was travelling to work on foot, followed by travelling by car and the least correlated travelling by bicycle, these results were unexpected due to travelling by car does not involve physical activity, however, had a stronger correlation rather than travelling by bicycle. It can be assumed that having a job could improve residents health, does not matter the method of transport.
+Finally, London and the Local Authorities around London and the Local Authorities near Leeds, Liverpool, and Manchester show a high concentration with residents with “very good health”, the importance of employment rates and health are a key factor for policy makers to promote a more equal country where all the residents can aspire to have a “very good health”, having high employment rates could improve mental and physical health.
+
+
+
